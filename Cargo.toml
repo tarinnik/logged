@@ -1,0 +1,8 @@
+[package]
+name = "logged"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+iced = "0.13.1"
+notify = "8.0.0"
