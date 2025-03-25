@@ -1,6 +1,6 @@
 mod watcher;
 
-use crate::watcher::Event;
+use crate::watcher::WatcherEvent;
 use iced::{widget::text, Element, Subscription, Theme};
 
 fn main() -> iced::Result {
@@ -31,5 +31,5 @@ impl App {
 
 #[derive(Clone, Debug)]
 pub enum Message {
-    WatcherEvent(Event),
+    WatcherEvent(WatcherEvent),
 }

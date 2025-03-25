@@ -4,5 +4,8 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+anyhow = "1.0.97"
+async-channel = "2.3.1"
 iced = "0.13.1"
+log = "0.4.26"
 notify = "8.0.0"
