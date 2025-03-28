@@ -1,7 +1,10 @@
+mod ui;
+mod util;
 mod watcher;
 
-use crate::watcher::WatcherEvent;
-use iced::{widget::text, Element, Subscription, Theme};
+use crate::{ui::View, watcher::WatcherEvent};
+use iced::{widget::text, Element, Subscription, Task, Theme};
+use ui::{log_view::LogViewMessage, Views};
 
 fn main() -> iced::Result {
     iced::application("logged", App::update, App::view)
@@ -11,13 +14,24 @@ fn main() -> iced::Result {
 }
 
 #[derive(Default)]
-struct App {}
+struct App {
+    view: View,
+    views: Views,
+}
 
 impl App {
-    fn update(&mut self, message: Message) {}
+    fn update(&mut self, message: Message) -> Task<Message> {
+        match message {
+            Message::LogViewMessage(log_message) => self.views.log.update(log_message),
+            _ => Task::none(),
+        }
+    }
 
     fn view(&self) -> Element<Message> {
-        text("logged").into()
+        match self.view {
+            View::Log => self.views.log.view(),
+            View::Settings => text("settings").into(),
+        }
     }
 
     fn subscription(&self) -> Subscription<Message> {
@@ -32,4 +46,5 @@ impl App {
 #[derive(Clone, Debug)]
 pub enum Message {
     WatcherEvent(WatcherEvent),
+    LogViewMessage(LogViewMessage),
 }

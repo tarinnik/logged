@@ -1,9 +1,13 @@
-use async_channel::{bounded, Receiver, Sender};
+use crate::util::FormattedError;
+use anyhow::Context;
 use iced::{
-    futures::{channel::mpsc::Sender as FuturesSender, SinkExt, Stream},
+    futures::{
+        channel::mpsc::{channel, Receiver, Sender},
+        select, SinkExt, Stream, StreamExt,
+    },
     stream,
 };
-use notify::{recommended_watcher, Event, RecommendedWatcher};
+use notify::{recommended_watcher, Event, RecommendedWatcher, RecursiveMode, Watcher};
 use std::path::PathBuf;
 
 pub fn watch() -> impl Stream<Item = WatcherEvent> {
@@ -15,44 +19,71 @@ pub fn watch() -> impl Stream<Item = WatcherEvent> {
                 State::Inactive => match start_watcher(&mut output).await {
                     Ok(s) => state = s,
                     Err(e) => {
-                        let _ = output.send(WatcherEvent::WatcherInactive(e)).await;
+                        let _ = output.send(WatcherEvent::WatcherInactive(e.format())).await;
                     }
                 },
-                State::Active(ref watcher) => {}
+                State::Active(ref mut watcher) => {
+                    select! {
+                        event = watcher.event_receiver.next() => {
+                            if let Some(event) = event {
+                                let _ = output.send(WatcherEvent::NewLog(event.context("Error getting event").map_err(|e|e.format()))).await;
+                            }
+                        }
+                        command = watcher.command_receiver.next() => {
+                            if let Some(command) = command {
+                                watcher.handle_command(command, &mut output).await;
+                            }
+                        }
+                    }
+                }
             }
         }
     })
 }
 
-async fn start_watcher(output: &mut FuturesSender<WatcherEvent>) -> anyhow::Result<State> {
-    let (event_sender, event_receiver) = bounded::<notify::Result<Event>>(1000);
-    let (command_sender, command_receiver) = bounded::<WatcherCommand>(50);
+async fn start_watcher(output: &mut Sender<WatcherEvent>) -> anyhow::Result<State> {
+    let (mut event_sender, event_receiver) = channel::<notify::Result<Event>>(1000);
+    let (command_sender, command_receiver) = channel::<WatcherCommand>(50);
     let watcher = recommended_watcher(move |e| {
-        let _ = event_sender.send_blocking(e);
+        let _ = event_sender.try_send(e);
     })?;
 
     output
         .send(WatcherEvent::WatcherActive(command_sender))
         .await?;
 
-    Ok(State::Active(Watcher {
+    Ok(State::Active(FileWatcher {
         event_receiver,
         command_receiver,
         watcher,
     }))
 }
 
-struct Watcher {
+struct FileWatcher {
     event_receiver: Receiver<notify::Result<Event>>,
     command_receiver: Receiver<WatcherCommand>,
     watcher: RecommendedWatcher,
 }
 
+impl FileWatcher {
+    async fn handle_command(&mut self, command: WatcherCommand, sender: &mut Sender<WatcherEvent>) {
+        let result = match command {
+            WatcherCommand::Watch(path) => self.watcher.watch(&path, RecursiveMode::NonRecursive),
+            WatcherCommand::Unwatch(path) => self.watcher.unwatch(&path),
+        }
+        .context("Unable to watch file")
+        .map_err(|e| e.format());
+
+        let _ = sender.send(WatcherEvent::WatchResult(result)).await;
+    }
+}
+
 #[derive(Clone, Debug)]
 pub enum WatcherEvent {
-    WatcherInactive(anyhow::Error),
+    WatcherInactive(String),
     WatcherActive(Sender<WatcherCommand>),
-    NewLog,
+    NewLog(Result<Event, String>),
+    WatchResult(Result<(), String>),
 }
 
 pub enum WatcherCommand {
@@ -62,5 +93,5 @@ pub enum WatcherCommand {
 
 enum State {
     Inactive,
-    Active(Watcher),
+    Active(FileWatcher),
 }
