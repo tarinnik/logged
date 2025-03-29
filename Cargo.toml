@@ -9,4 +9,4 @@ iced = { version = "0.13.1", features = ["tokio"] }
 log = "0.4.26"
 notify = "8.0.0"
 rfd = "0.15.3"
-tokio = { version = "1.0", features = ["fs"] }
+tokio = { version = "1.0", features = ["fs", "io-util", "sync"] }

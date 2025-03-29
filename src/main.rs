@@ -1,8 +1,9 @@
+mod file;
 mod ui;
 mod util;
 mod watcher;
 
-use crate::{ui::View, watcher::WatcherEvent};
+use crate::ui::View;
 use iced::{widget::text, Element, Subscription, Task, Theme};
 use ui::{log_view::LogViewMessage, Views};
 
@@ -35,7 +36,8 @@ impl App {
     }
 
     fn subscription(&self) -> Subscription<Message> {
-        Subscription::run(watcher::watch).map(Message::WatcherEvent)
+        Subscription::run(watcher::watch)
+            .map(|e| Message::LogViewMessage(LogViewMessage::WatcherEvent(e)))
     }
 
     fn theme(&self) -> Theme {
@@ -45,6 +47,6 @@ impl App {
 
 #[derive(Clone, Debug)]
 pub enum Message {
-    WatcherEvent(WatcherEvent),
     LogViewMessage(LogViewMessage),
+    SettingsViewMessage,
 }

@@ -1,4 +1,4 @@
-use crate::util::FormattedError;
+use crate::util::Formatted;
 use anyhow::Context;
 use iced::{
     futures::{
