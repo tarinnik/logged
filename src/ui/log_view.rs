@@ -4,7 +4,11 @@ use crate::{
     watcher::{WatcherCommand, WatcherEvent},
     Message,
 };
-use iced::{futures::channel::mpsc::Sender, widget::button, Element, Task};
+use iced::{
+    futures::channel::mpsc::Sender,
+    widget::{button, column, text},
+    Element, Task,
+};
 use notify::{Event, EventKind};
 use rfd::{AsyncFileDialog, FileHandle};
 
@@ -16,9 +20,18 @@ pub struct LogView {
 
 impl LogView {
     pub fn view(&self) -> Element<Message> {
-        button("+")
-            .on_press(Message::LogViewMessage(LogViewMessage::PickFile))
-            .into()
+        let mut data_column = column![];
+        for data in &self.data {
+            for line in &data.contents {
+                data_column = data_column.push(text(line));
+            }
+        }
+
+        column![
+            button("+").on_press(Message::LogViewMessage(LogViewMessage::PickFile)),
+            data_column
+        ]
+        .into()
     }
 
     pub fn update(&mut self, message: LogViewMessage) -> Task<Message> {
@@ -37,6 +50,19 @@ impl LogView {
                     Task::none()
                 }
             }
+            LogViewMessage::FileRead(data) => match data {
+                Ok(data) => {
+                    if let Some(sender) = &mut self.watcher_sender {
+                        let _ = sender.try_send(WatcherCommand::Watch(data.path.clone()));
+                    }
+                    self.data.push(data);
+                    Task::none()
+                }
+                Err(err) => {
+                    self.display_error(err);
+                    Task::none()
+                }
+            },
             LogViewMessage::FileUpdated(update) => {
                 match update {
                     Ok(update) => {
@@ -97,7 +123,9 @@ impl LogView {
         }
     }
 
-    fn display_error(&self, _error: String) {}
+    fn display_error(&self, error: String) {
+        eprintln!("{}", error);
+    }
 }
 
 async fn pick_file() -> Option<FileHandle> {

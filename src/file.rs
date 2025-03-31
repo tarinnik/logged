@@ -52,6 +52,7 @@ pub async fn read_file(path: PathBuf) -> anyhow::Result<LogData> {
 
 /// Read the new data from a log file
 pub async fn read_new_data(path: PathBuf, position: u64) -> anyhow::Result<LogData> {
+    println!("Yep re-reading the file buddy");
     let mut file = File::open(&path)
         .await
         .with_context(|| format!("Unable to open file {}", path.format()))?;
@@ -75,6 +76,8 @@ pub async fn read_new_data(path: PathBuf, position: u64) -> anyhow::Result<LogDa
         .stream_position()
         .await
         .with_context(|| format!("Unable to get stream position of {}", path.format()))?;
+
+    println!("New data: {}", &new_data);
 
     Ok(LogData::new(path, new_data, new_position))
 }
