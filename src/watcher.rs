@@ -45,7 +45,6 @@ async fn start_watcher(output: &mut Sender<WatcherEvent>) -> anyhow::Result<Stat
     let (mut event_sender, event_receiver) = channel::<notify::Result<Event>>(1000);
     let (command_sender, command_receiver) = channel::<WatcherCommand>(50);
     let watcher = recommended_watcher(move |e| {
-        println!("NEW EVENT: {:?}", &e);
         let _ = event_sender.try_send(e);
     })?;
 

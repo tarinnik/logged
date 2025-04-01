@@ -6,32 +6,45 @@ use crate::{
 };
 use iced::{
     futures::channel::mpsc::Sender,
-    widget::{button, column, text},
-    Element, Task,
+    widget::{
+        button,
+        button::{Catalog, Status},
+        column, container,
+        container::Style,
+        row, text,
+    },
+    Color, Element, Length, Task, Theme,
 };
 use notify::{Event, EventKind};
 use rfd::{AsyncFileDialog, FileHandle};
+use std::path::PathBuf;
 
 #[derive(Default)]
 pub struct LogView {
     watcher_sender: Option<Sender<WatcherCommand>>,
     data: Vec<LogData>,
+    selected_tab: Option<PathBuf>,
 }
 
 impl LogView {
     pub fn view(&self) -> Element<Message> {
-        let mut data_column = column![];
-        for data in &self.data {
-            for line in &data.contents {
-                data_column = data_column.push(text(line));
+        let mut tabs = row![];
+        let mut logs = column![];
+
+        if let Some(selected_tab) = &self.selected_tab {
+            for tab_data in &self.data {
+                tabs = tabs.push(tab_button(&tab_data.path));
+                if *selected_tab == tab_data.path {
+                    for line in &tab_data.contents {
+                        logs = logs.push(text(line));
+                    }
+                }
             }
         }
 
-        column![
-            button("+").on_press(Message::LogViewMessage(LogViewMessage::PickFile)),
-            data_column
-        ]
-        .into()
+        tabs = tabs.push(button("+").on_press(Message::LogViewMessage(LogViewMessage::PickFile)));
+
+        column![tabs, container(logs).padding(10)].into()
     }
 
     pub fn update(&mut self, message: LogViewMessage) -> Task<Message> {
@@ -42,6 +55,7 @@ impl LogView {
             }),
             LogViewMessage::FilePicked(file) => {
                 if let Some(file) = file {
+                    self.selected_tab = Some(file.path().to_owned());
                     Task::perform(read_file(file.path().to_owned()), |x| {
                         let result = x.map_err(|e| e.format());
                         Message::LogViewMessage(LogViewMessage::FileRead(result))
@@ -77,8 +91,18 @@ impl LogView {
                 };
                 Task::none()
             }
-
-            _ => Task::none(),
+            LogViewMessage::ChangeTab(tab) => {
+                self.selected_tab = Some(tab);
+                Task::none()
+            }
+            LogViewMessage::CloseTab(tab) => {
+                let index = self.data.iter().position(|x| x.path == tab);
+                if let Some(i) = index {
+                    self.data.remove(i);
+                    self.selected_tab = self.data.first().map(|x| x.path.clone());
+                }
+                Task::none()
+            }
         }
     }
 
@@ -139,4 +163,48 @@ pub enum LogViewMessage {
     WatcherEvent(WatcherEvent),
     FileRead(Result<LogData, String>),
     FileUpdated(Result<LogData, String>),
+    ChangeTab(PathBuf),
+    CloseTab(PathBuf),
+}
+
+fn tab_button(path: &PathBuf) -> Element<Message> {
+    let file_name = path
+        .as_path()
+        .file_name()
+        .map(|s| s.to_string_lossy().to_string())
+        .unwrap_or(String::from("N/A"));
+
+    let background = tab_button_style;
+
+    let close_button = button("x")
+        .on_press(Message::LogViewMessage(LogViewMessage::CloseTab(
+            path.clone(),
+        )))
+        .style(close_button_style)
+        .padding(0);
+
+    button(
+        container(row![
+            container(text(file_name)).align_left(Length::Fill),
+            container(close_button).align_right(Length::Fill),
+        ])
+        .style(background)
+        .padding(10)
+        .width(150),
+    )
+    .padding(0)
+    .on_press(Message::LogViewMessage(LogViewMessage::ChangeTab(
+        path.clone(),
+    )))
+    .into()
+}
+
+fn tab_button_style(_theme: &Theme) -> Style {
+    Style::default().background(Color::from_rgb8(15, 15, 15))
+}
+
+fn close_button_style(_theme: &Theme, _status: Status) -> iced::widget::button::Style {
+    let mut style = iced::widget::button::Style::default();
+    style.text_color = Color::WHITE;
+    style
 }
