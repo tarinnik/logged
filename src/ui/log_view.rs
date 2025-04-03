@@ -8,10 +8,12 @@ use iced::{
     futures::channel::mpsc::Sender,
     widget::{
         button,
-        button::{Catalog, Status},
+        button::Status,
         column, container,
         container::Style,
-        row, text,
+        row, scrollable,
+        scrollable::{Direction, Scrollbar},
+        text,
     },
     Color, Element, Length, Task, Theme,
 };
@@ -42,9 +44,23 @@ impl LogView {
             }
         }
 
-        tabs = tabs.push(button("+").on_press(Message::LogViewMessage(LogViewMessage::PickFile)));
+        tabs = tabs.push(
+            button("+")
+                .on_press(Message::LogViewMessage(LogViewMessage::PickFile))
+                .padding(10),
+        );
 
-        column![tabs, container(logs).padding(10)].into()
+        column![
+            tabs,
+            scrollable(container(logs).padding(10))
+                .width(Length::Fill)
+                .height(Length::Fill)
+                .direction(Direction::Both {
+                    vertical: Scrollbar::default(),
+                    horizontal: Scrollbar::default()
+                })
+        ]
+        .into()
     }
 
     pub fn update(&mut self, message: LogViewMessage) -> Task<Message> {
@@ -186,11 +202,10 @@ fn tab_button(path: &PathBuf) -> Element<Message> {
     button(
         container(row![
             container(text(file_name)).align_left(Length::Fill),
-            container(close_button).align_right(Length::Fill),
+            container(close_button).align_right(70),
         ])
         .style(background)
-        .padding(10)
-        .width(150),
+        .padding(10),
     )
     .padding(0)
     .on_press(Message::LogViewMessage(LogViewMessage::ChangeTab(
