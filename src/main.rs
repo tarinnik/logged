@@ -1,4 +1,5 @@
 mod file;
+mod filter;
 mod ui;
 mod util;
 mod watcher;

@@ -1,5 +1,5 @@
 use crate::{
-    file::{read_file, read_new_data, LogData},
+    file::{read_file, read_new_data, LogData, LogLine},
     util::Formatted,
     watcher::{WatcherCommand, WatcherEvent},
     Message,
@@ -12,20 +12,23 @@ use iced::{
         column, container,
         container::Style,
         row, scrollable,
-        scrollable::{Direction, Scrollbar},
+        scrollable::{snap_to, Direction, Id as ScrollableId, RelativeOffset, Scrollbar},
         text,
     },
     Color, Element, Length, Task, Theme,
 };
 use notify::{Event, EventKind};
 use rfd::{AsyncFileDialog, FileHandle};
-use std::path::PathBuf;
+use std::{path::PathBuf, sync::LazyLock};
+
+static SCROLLABLE_ID: LazyLock<ScrollableId> = LazyLock::new(ScrollableId::unique);
 
 #[derive(Default)]
 pub struct LogView {
     watcher_sender: Option<Sender<WatcherCommand>>,
     data: Vec<LogData>,
     selected_tab: Option<PathBuf>,
+    auto_scroll: bool,
 }
 
 impl LogView {
@@ -35,10 +38,10 @@ impl LogView {
 
         if let Some(selected_tab) = &self.selected_tab {
             for tab_data in &self.data {
-                tabs = tabs.push(tab_button(&tab_data.path));
+                tabs = tabs.push(tab_button_view(&tab_data.path));
                 if *selected_tab == tab_data.path {
                     for line in &tab_data.contents {
-                        logs = logs.push(text(line));
+                        logs = logs.push(log_line_view(line));
                     }
                 }
             }
@@ -52,6 +55,7 @@ impl LogView {
 
         column![
             tabs,
+            filter_bar_view(self.auto_scroll),
             scrollable(container(logs).padding(10))
                 .width(Length::Fill)
                 .height(Length::Fill)
@@ -59,6 +63,7 @@ impl LogView {
                     vertical: Scrollbar::default(),
                     horizontal: Scrollbar::default()
                 })
+                .id(SCROLLABLE_ID.clone())
         ]
         .into()
     }
@@ -81,10 +86,11 @@ impl LogView {
                 }
             }
             LogViewMessage::FileRead(data) => match data {
-                Ok(data) => {
+                Ok(mut data) => {
                     if let Some(sender) = &mut self.watcher_sender {
                         let _ = sender.try_send(WatcherCommand::Watch(data.path.clone()));
                     }
+                    data.filter_all();
                     self.data.push(data);
                     Task::none()
                 }
@@ -118,6 +124,14 @@ impl LogView {
                     self.selected_tab = self.data.first().map(|x| x.path.clone());
                 }
                 Task::none()
+            }
+            LogViewMessage::ToggleScroll => {
+                self.auto_scroll = !self.auto_scroll;
+                if self.auto_scroll {
+                    snap_to(SCROLLABLE_ID.clone(), RelativeOffset::END)
+                } else {
+                    Task::none()
+                }
             }
         }
     }
@@ -181,16 +195,16 @@ pub enum LogViewMessage {
     FileUpdated(Result<LogData, String>),
     ChangeTab(PathBuf),
     CloseTab(PathBuf),
+    ToggleScroll,
 }
 
-fn tab_button(path: &PathBuf) -> Element<Message> {
+/// Create a tab button
+fn tab_button_view(path: &PathBuf) -> Element<Message> {
     let file_name = path
         .as_path()
         .file_name()
         .map(|s| s.to_string_lossy().to_string())
         .unwrap_or(String::from("N/A"));
-
-    let background = tab_button_style;
 
     let close_button = button("x")
         .on_press(Message::LogViewMessage(LogViewMessage::CloseTab(
@@ -204,7 +218,7 @@ fn tab_button(path: &PathBuf) -> Element<Message> {
             container(text(file_name)).align_left(Length::Fill),
             container(close_button).align_right(70),
         ])
-        .style(background)
+        .style(|_| Style::default().background(Color::from_rgb8(15, 15, 15)))
         .padding(10),
     )
     .padding(0)
@@ -214,8 +228,20 @@ fn tab_button(path: &PathBuf) -> Element<Message> {
     .into()
 }
 
-fn tab_button_style(_theme: &Theme) -> Style {
-    Style::default().background(Color::from_rgb8(15, 15, 15))
+fn filter_bar_view(scroll: bool) -> Element<'static, Message> {
+    let button_text = if scroll { "|" } else { "-" };
+
+    container(row![button(button_text)
+        .style(close_button_style)
+        .on_press(Message::LogViewMessage(LogViewMessage::ToggleScroll))])
+    .into()
+}
+
+fn log_line_view(log: &LogLine) -> Element<Message> {
+    container(text(log.text.clone()).color(log.foreground))
+        .style(|_| Style::default().background(log.background))
+        .padding(2)
+        .into()
 }
 
 fn close_button_style(_theme: &Theme, _status: Status) -> iced::widget::button::Style {
