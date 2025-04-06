@@ -1,5 +1,6 @@
 use crate::{
     file::{read_file, read_new_data, LogData, LogLine},
+    filter::Filters,
     util::Formatted,
     watcher::{WatcherCommand, WatcherEvent},
     Message,
@@ -9,11 +10,11 @@ use iced::{
     widget::{
         button,
         button::Status,
-        column, container,
+        checkbox, column, container,
         container::Style,
-        row, scrollable,
+        horizontal_space, row, scrollable,
         scrollable::{snap_to, Direction, Id as ScrollableId, RelativeOffset, Scrollbar},
-        text,
+        stack, text,
     },
     Color, Element, Length, Task, Theme,
 };
@@ -29,6 +30,7 @@ pub struct LogView {
     data: Vec<LogData>,
     selected_tab: Option<PathBuf>,
     auto_scroll: bool,
+    log_enabled_expaneded: bool,
 }
 
 impl LogView {
@@ -36,12 +38,19 @@ impl LogView {
         let mut tabs = row![];
         let mut logs = column![];
 
+        let selected_tab = self
+            .data
+            .iter()
+            .find(|d| Some(d.path.clone()) == self.selected_tab);
+
         if let Some(selected_tab) = &self.selected_tab {
             for tab_data in &self.data {
                 tabs = tabs.push(tab_button_view(&tab_data.path));
                 if *selected_tab == tab_data.path {
                     for line in &tab_data.contents {
-                        logs = logs.push(log_line_view(line));
+                        if line.visible {
+                            logs = logs.push(log_line_view(line));
+                        }
                     }
                 }
             }
@@ -53,9 +62,15 @@ impl LogView {
                 .padding(10),
         );
 
+        let filter_bar = if let Some(tab) = &selected_tab {
+            filter_bar_view(self.auto_scroll, self.log_enabled_expaneded, &tab.filters)
+        } else {
+            row![].into()
+        };
+
         column![
             tabs,
-            filter_bar_view(self.auto_scroll),
+            filter_bar,
             scrollable(container(logs).padding(10))
                 .width(Length::Fill)
                 .height(Length::Fill)
@@ -133,6 +148,29 @@ impl LogView {
                     Task::none()
                 }
             }
+            LogViewMessage::ToggleFilterSelect => {
+                self.log_enabled_expaneded = !self.log_enabled_expaneded;
+                Task::none()
+            }
+            LogViewMessage::ToggleLogFilter(log_level, enabled) => {
+                let mut selected_tab = self
+                    .data
+                    .iter_mut()
+                    .find(|d| Some(d.path.clone()) == self.selected_tab);
+
+                if let Some(tab) = &mut selected_tab {
+                    for level in &mut tab.filters.levels {
+                        if level.name == log_level {
+                            level.enabled = enabled;
+                            break;
+                        }
+                    }
+
+                    tab.filter_all();
+                }
+
+                Task::none()
+            }
         }
     }
 
@@ -196,6 +234,8 @@ pub enum LogViewMessage {
     ChangeTab(PathBuf),
     CloseTab(PathBuf),
     ToggleScroll,
+    ToggleFilterSelect,
+    ToggleLogFilter(String, bool),
 }
 
 /// Create a tab button
@@ -228,12 +268,36 @@ fn tab_button_view(path: &PathBuf) -> Element<Message> {
     .into()
 }
 
-fn filter_bar_view(scroll: bool) -> Element<'static, Message> {
+fn filter_bar_view(scroll: bool, log_filter_expanded: bool, filters: &Filters) -> Element<Message> {
     let button_text = if scroll { "|" } else { "-" };
 
-    container(row![button(button_text)
-        .style(close_button_style)
-        .on_press(Message::LogViewMessage(LogViewMessage::ToggleScroll))])
+    let log_filter: Element<Message> = if log_filter_expanded {
+        let level_data = filters.levels.iter().map(|l| {
+            checkbox(l.name.clone(), l.enabled)
+                .on_toggle(|e| {
+                    Message::LogViewMessage(LogViewMessage::ToggleLogFilter(l.name.clone(), e))
+                })
+                .into()
+        });
+        column![
+            column(level_data),
+            button("Close").on_press(Message::LogViewMessage(LogViewMessage::ToggleFilterSelect))
+        ]
+        .into()
+    } else {
+        button("Log levels")
+            .style(close_button_style)
+            .on_press(Message::LogViewMessage(LogViewMessage::ToggleFilterSelect))
+            .into()
+    };
+
+    container(row![
+        log_filter,
+        horizontal_space(),
+        button(button_text)
+            .style(close_button_style)
+            .on_press(Message::LogViewMessage(LogViewMessage::ToggleScroll))
+    ])
     .into()
 }
 
