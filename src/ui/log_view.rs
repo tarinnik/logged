@@ -14,7 +14,7 @@ use iced::{
         container::Style,
         horizontal_space, row, scrollable,
         scrollable::{snap_to, Direction, Id as ScrollableId, RelativeOffset, Scrollbar},
-        stack, text,
+        text,
     },
     Color, Element, Length, Task, Theme,
 };
@@ -143,7 +143,7 @@ impl LogView {
             LogViewMessage::ToggleScroll => {
                 self.auto_scroll = !self.auto_scroll;
                 if self.auto_scroll {
-                    snap_to(SCROLLABLE_ID.clone(), RelativeOffset::END)
+                    snap_to(SCROLLABLE_ID.clone(), RelativeOffset { x: 0.0, y: 1.0 })
                 } else {
                     Task::none()
                 }
