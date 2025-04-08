@@ -13,7 +13,7 @@ use iced::{
         checkbox, column, container,
         container::Style,
         horizontal_space, row, scrollable,
-        scrollable::{snap_to, Direction, Id as ScrollableId, RelativeOffset, Scrollbar},
+        scrollable::{scroll_to, AbsoluteOffset, Direction, Id as ScrollableId, Scrollbar},
         text,
     },
     Color, Element, Length, Task, Theme,
@@ -74,10 +74,7 @@ impl LogView {
             scrollable(container(logs).padding(10))
                 .width(Length::Fill)
                 .height(Length::Fill)
-                .direction(Direction::Both {
-                    vertical: Scrollbar::default(),
-                    horizontal: Scrollbar::default()
-                })
+                .direction(Direction::Vertical(Scrollbar::default()))
                 .id(SCROLLABLE_ID.clone())
         ]
         .into()
@@ -120,6 +117,18 @@ impl LogView {
                         for data in self.data.iter_mut() {
                             if data.path == update.path {
                                 data.append(update);
+
+                                if Some(&data.path) == self.selected_tab.as_ref()
+                                    && self.auto_scroll
+                                {
+                                    return scroll_to(
+                                        SCROLLABLE_ID.clone(),
+                                        AbsoluteOffset {
+                                            x: 0.0,
+                                            y: f32::MAX,
+                                        },
+                                    );
+                                }
                                 break;
                             }
                         }
@@ -142,11 +151,7 @@ impl LogView {
             }
             LogViewMessage::ToggleScroll => {
                 self.auto_scroll = !self.auto_scroll;
-                if self.auto_scroll {
-                    snap_to(SCROLLABLE_ID.clone(), RelativeOffset { x: 0.0, y: 1.0 })
-                } else {
-                    Task::none()
-                }
+                Task::none()
             }
             LogViewMessage::ToggleFilterSelect => {
                 self.log_enabled_expaneded = !self.log_enabled_expaneded;
@@ -305,6 +310,7 @@ fn log_line_view(log: &LogLine) -> Element<Message> {
     container(text(log.text.clone()).color(log.foreground))
         .style(|_| Style::default().background(log.background))
         .padding(2)
+        .width(Length::Fill)
         .into()
 }
 
